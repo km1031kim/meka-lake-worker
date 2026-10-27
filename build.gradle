@@ -5,7 +5,9 @@ plugins {
 	id 'com.google.osdetector' version '1.7.3'
 
 }
-
+configurations.configureEach {
+	exclude group: 'org.slf4j', module: 'slf4j-reload4j'
+}
 group = 'com.metalake'
 version = '0.0.1-SNAPSHOT'
 

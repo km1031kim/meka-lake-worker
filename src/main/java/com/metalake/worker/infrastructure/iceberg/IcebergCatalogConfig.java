@@ -22,6 +22,9 @@ public class IcebergCatalogConfig {
         properties.put("s3.path-style-access", "true");
         properties.put("client.region", "us-east-1");
 
+        properties.put("s3.access-key-id", "admin");
+        properties.put("s3.secret-access-key", "chrldkagh3#");
+
         RESTCatalog catalog = new RESTCatalog();
         catalog.initialize("ai-ready-catalog", properties);
 
