@@ -1,22 +1,21 @@
 
 package com.metalake.worker.application;
 
+
 import com.metalake.worker.domain.source.service.SourcePersistenceService;
 import com.metalake.worker.infrastructure.gravitino.GravitinoClient;
+import com.metalake.worker.infrastructure.gravitino.GravitinoFileset;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.net.URI;
-import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
 
 @Service
 @RequiredArgsConstructor
 public class SourceRegistrationService {
 
     private static final String METALAKE = "ax";
-    private static final String CATALOG = "source";
     private static final String SCHEMA = "object-storage";
 
     private final SourcePersistenceService persistenceService;
@@ -25,6 +24,7 @@ public class SourceRegistrationService {
     public RegisteredSource registerMinio(
             RegisterMinioSourceCommand command
     ) {
+        // 기존 입력값 검증 메서드 재사용
         validate(command);
 
         String storageLocation = buildStorageLocation(
@@ -32,134 +32,146 @@ public class SourceRegistrationService {
                 command.path()
         );
 
-        // 1. PostgreSQL에 소스 등록 (INACTIVE)
         Long sourceId = persistenceService.createInactive(
                 command.name()
         );
 
-        // 등록 건마다 고유한 Fileset 생성
-        String filesetName = "source_" + sourceId;
+        String catalogName = "source_" + sourceId;
+        String filesetName = "fileset_" + sourceId;
 
-        // 2. Gravitino Fileset 설정
-        Map<String, String> properties =
-                buildProperties(command, filesetName);
-
-        // 3. Gravitino Fileset 생성
         try {
+            // 2. Catalog 생성 (인증 정보 관리)
+            gravitinoClient.createFilesetCatalog(
+                    catalogName,
+                    buildCatalogProperties(command)
+            );
+
+            // 3. Schema 생성
+            gravitinoClient.createSchema(
+                    catalogName,
+                    SCHEMA
+            );
+
+            // 4. EXTERNAL Fileset 생성 (원본 경로만 등록)
             gravitinoClient.createExternalFileset(
-                    CATALOG,
+                    catalogName,
                     SCHEMA,
                     filesetName,
                     storageLocation,
-                    properties
+                    Map.of(
+                            "default-location-name",
+                            filesetName
+                    )
             );
+
+            // 5. 등록된 Fileset 확인
+            GravitinoFileset fileset =
+                    gravitinoClient.loadFileset(
+                            catalogName,
+                            SCHEMA,
+                            filesetName
+                    );
+
+            if (!filesetName.equals(fileset.name())
+                    || !storageLocation.equals(
+                    fileset.resolvedStorageLocation())) {
+                throw new IllegalStateException(
+                        "Created Fileset metadata mismatch"
+                );
+            }
+
+            // 6. JPA ACTIVE 전환
+            persistenceService.activate(
+                    sourceId,
+                    METALAKE,
+                    catalogName,
+                    SCHEMA,
+                    filesetName
+            );
+
+            return new RegisteredSource(
+                    sourceId,
+                    METALAKE,
+                    catalogName,
+                    SCHEMA,
+                    filesetName
+            );
+
         } catch (RuntimeException e) {
+            // 별도 트랜잭션으로 생성된 INACTIVE 행은 유지
             throw new IllegalStateException(
-                    "Fileset creation failed. sourceId=" + sourceId,
+                    "Source registration failed. sourceId="
+                            + sourceId
+                            + ", catalog=" + catalogName
+                            + ". Reconciliation may be required.",
                     e
             );
         }
+    }
 
-        // 4. PostgreSQL 소스 활성화
-        persistenceService.activate(
-                sourceId,
-                METALAKE,
-                CATALOG,
-                SCHEMA,
-                filesetName
-        );
-
-        return new RegisteredSource(
-                sourceId,
-                METALAKE,
-                CATALOG,
-                SCHEMA,
-                filesetName
+    private Map<String, String> buildCatalogProperties(
+            RegisterMinioSourceCommand command
+    ) {
+        return Map.of(
+                "s3-endpoint", command.endpoint(),
+                "s3-access-key-id", command.accessKey(),
+                "s3-secret-access-key", command.secretKey(),
+                "s3-region", "us-east-1",
+                "s3-path-style-access", "true",
+                "credential-providers", "s3-secret-key"
         );
     }
 
-    private Map<String, String> buildProperties(
-            RegisterMinioSourceCommand command,
-            String filesetName
-    ) {
-        Map<String, String> properties = new HashMap<>();
 
-        properties.put("default-location-name", filesetName);
-        properties.put("credential-providers", "s3-secret-key");
-        properties.put("s3-endpoint", command.endpoint());
-        properties.put("s3-access-key-id", command.accessKey());
-        properties.put("s3-secret-access-key", command.secretKey());
-        properties.put("s3-region", "us-east-1");
-        properties.put("s3-path-style-access", "true");
+    private void validate(RegisterMinioSourceCommand command) {
+        if (command == null
+                || isBlank(command.name())
+                || isBlank(command.endpoint())
+                || isBlank(command.bucket())
+                || isBlank(command.accessKey())
+                || isBlank(command.secretKey())) {
+            throw new IllegalArgumentException(
+                    "Required MinIO source information is missing"
+            );
+        }
 
-        return properties;
+        URI endpoint = URI.create(command.endpoint());
+
+        if ((!endpoint.getScheme().equalsIgnoreCase("http")
+                && !endpoint.getScheme().equalsIgnoreCase("https"))
+                || endpoint.getHost() == null
+                || endpoint.getRawUserInfo() != null
+                || endpoint.getRawQuery() != null
+                || endpoint.getRawFragment() != null) {
+            throw new IllegalArgumentException("Invalid MinIO endpoint");
+        }
+
+        if (!command.bucket().matches("[a-z0-9][a-z0-9.-]*")) {
+            throw new IllegalArgumentException("Invalid bucket name");
+        }
     }
 
-    private String buildStorageLocation(
-            String bucket,
-            String path
-    ) {
-        String normalizedPath = path == null
+    private String buildStorageLocation(String bucket, String path) {
+        String prefix = path == null
                 ? ""
                 : path.replaceAll("^/+|/+$", "");
 
-        if (!normalizedPath.isEmpty()) {
-            for (String segment : normalizedPath.split("/", -1)) {
-                if (segment.isEmpty()
+        if (!prefix.isEmpty()) {
+            for (String segment : prefix.split("/", -1)) {
+                if (segment.isBlank()
                         || segment.equals(".")
-                        || segment.equals("..")) {
-                    throw new IllegalArgumentException(
-                            "Invalid object storage path"
-                    );
+                        || segment.equals("..")
+                        || segment.contains("\\")) {
+                    throw new IllegalArgumentException("Invalid source path");
                 }
             }
         }
 
         return "s3a://" + bucket
-                + (normalizedPath.isEmpty()
-                ? "/"
-                : "/" + normalizedPath);
+                + (prefix.isEmpty() ? "" : "/" + prefix);
     }
 
-    private void validate(RegisterMinioSourceCommand command) {
-        Objects.requireNonNull(command, "command");
-
-        requireText(command.name(), "name");
-        requireText(command.endpoint(), "endpoint");
-        requireText(command.bucket(), "bucket");
-        requireText(command.accessKey(), "accessKey");
-        requireText(command.secretKey(), "secretKey");
-
-        URI uri = URI.create(command.endpoint());
-
-        if (!("http".equalsIgnoreCase(uri.getScheme())
-                || "https".equalsIgnoreCase(uri.getScheme()))
-                || uri.getHost() == null
-                || uri.getRawUserInfo() != null
-                || uri.getRawQuery() != null
-                || uri.getRawFragment() != null
-                || (uri.getPath() != null
-                && !uri.getPath().isEmpty()
-                && !"/".equals(uri.getPath()))) {
-            throw new IllegalArgumentException(
-                    "Invalid MinIO endpoint"
-            );
-        }
-
-        if (!command.bucket().matches(
-                "[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]"
-        )) {
-            throw new IllegalArgumentException(
-                    "Invalid S3 bucket name"
-            );
-        }
-    }
-
-    private void requireText(String value, String field) {
-        if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(
-                    field + " must not be blank"
-            );
-        }
+    private boolean isBlank(String value) {
+        return value == null || value.isBlank();
     }
 }

@@ -22,4 +22,23 @@ public interface GravitinoClient {
             String storageLocation,
             Map<String, String> properties
     );
+
+
+    void createFilesetCatalog(
+            String catalog,
+            Map<String, String> properties
+    );
+
+    void createSchema(
+            String catalog,
+            String schema
+    );
+
+    S3CatalogSettings loadS3CatalogSettings(String catalog);
+
+    GravitinoS3Credentials loadS3Credentials(
+            String catalog,
+            String schema,
+            String fileset
+    );
 }

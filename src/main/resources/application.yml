@@ -1,0 +1,47 @@
+server:
+  address: 127.0.0.1
+  port: 18081
+
+spring:
+  application:
+    name: meta-lake-worker
+
+  datasource:
+    url: jdbc:postgresql://10.194.1.140:5432/meta_lake_poc
+    username: meta_lake_app
+    password: "chrldkagh3#"
+    hikari:
+      maximum-pool-size: 5
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      show-details: always
+
+metalake:
+  iceberg:
+    uri: http://10.194.1.140:9001/iceberg
+    s3-endpoint: http://10.194.1.140:9000
+    region: us-east-1
+    namespace: ai_ready_poc
+
+  gravitino:
+    base-url: http://10.194.1.140:8090
+    metalake: ax
+
+  lance:
+    rest-url: http://10.194.1.140:9101
+  storage:
+    s3:
+      endpoint: http://10.194.1.140:9000
+      region: us-east-1
+  docling:
+    base-url: http://10.194.1.140:5001
