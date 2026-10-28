@@ -28,11 +28,13 @@ public class SourceController {
 
     @PostMapping
     public ResponseEntity<SourceResponse> register(@Valid @RequestBody RegisterSourceRequest request) {
+
         SourceRegistrationHandler handler = handlers.stream()
                 .filter(candidate -> candidate.supports(request.sourceType()))
                 .findFirst().orElseThrow(() ->
                         new ResponseStatusException(HttpStatus.NOT_IMPLEMENTED,
                                 "Source registration is not available for this type"));
+
         return ResponseEntity.status(HttpStatus.CREATED).body(handler.register(request));
     }
 
@@ -44,15 +46,30 @@ public class SourceController {
     }
 
     static SourceResponse toResponse(SourceResource source) {
+
         boolean isFileset = source.getSourceType() == SourceType.FILESET;
         boolean isGit = source.getSourceType() == SourceType.GIT;
         boolean active = source.getStatus() == SourceStatus.ACTIVE;
+
         FilesetRef fileset = source.getGravitinoFileset() == null ? null
                 : new FilesetRef(source.getGravitinoMetalake(), source.getGravitinoCatalog(),
                         source.getGravitinoSchema(), source.getGravitinoFileset());
-        return new SourceResponse(source.getId(), source.getName(), source.getSourceType().name(),
-                source.getAccessMode().name(), source.getStatus().name(),
-                new Capabilities((isFileset || isGit) && active, isFileset && active && fileset != null,
-                        source.getSourceType() == SourceType.DATABASE && active), fileset, GvfsSourceUri.from(fileset));
+
+        return new SourceResponse(
+                source.getId(),
+                source.getName(),
+                source.getSourceType().name(),
+                source.getAccessMode().name(),
+                source.getStatus().name(),
+                new Capabilities(
+                        (isFileset || isGit) && active,
+                        isFileset && active && fileset != null,
+                        source.getSourceType() == SourceType.DATABASE && active),
+                fileset, GvfsSourceUri.from(fileset),
+
+                source.getSourceType() == SourceType.DATABASE && source.getGravitinoCatalog() != null
+                        ? new DatabaseRef(source.getGravitinoMetalake(), source.getGravitinoCatalog())
+                        : null);
     }
+
 }

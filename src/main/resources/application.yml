@@ -53,3 +53,9 @@ metalake:
   git:
     service-url: http://10.194.1.140:8110
     service-token: chrldkagh3#
+
+
+# Database Source
+database:
+  source:
+    allowed-hosts: ${DATABASE_SOURCE_ALLOWED_HOSTS:10.194.1.140}
