@@ -35,7 +35,8 @@ public class VectorBridgeClient {
                                  String namespace, String table) {}
     public record DocumentPayload(String documentId, String sourcePath, String contentJson) {}
     public record IngestRequest(Long sourceId, Long jobId, List<DocumentPayload> documents) {}
-    public record SearchRequest(Long sourceId, Long jobId, String query, int topK) {}
+    public record SearchRequest(Long sourceId, Long jobId, String catalog,
+                                String namespace, String table, String query, int topK) {}
     public record SearchHit(String chunkId, String documentId, String sourcePath,
                             int pageNo, String sectionPath, String sourceRef,
                             String content, double distance) {}
@@ -49,8 +50,11 @@ public class VectorBridgeClient {
                 VectorManifest.class);
     }
 
-    public SearchResponse search(Long sourceId, Long jobId, String query, int topK) {
-        return post("/internal/vectors/search", new SearchRequest(sourceId, jobId, query, topK),
+    public SearchResponse search(Long sourceId, Long jobId,
+                                 String catalog, String namespace, String table,
+                                 String query, int topK) {
+        return post("/internal/vectors/search",
+                new SearchRequest(sourceId, jobId, catalog, namespace, table, query, topK),
                 SearchResponse.class);
     }
 

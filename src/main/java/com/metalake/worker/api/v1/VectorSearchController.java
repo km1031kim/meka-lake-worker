@@ -30,12 +30,22 @@ public class VectorSearchController {
         var source = sources.findById(sourceId).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Source not found"));
         Long jobId = source.getCurrentPublishedJobId();
-        if (jobId == null || outputs.findByProcessingJob_Id(jobId).stream()
-                .noneMatch(o -> "VECTORS".equals(o.getOutputType()))) {
+        if (jobId == null) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "VECTORS_NOT_READY");
         }
-        // Access control by Source owner/tenant should be enforced here before production use.
-        return vectors.search(sourceId, jobId, request.query(),
+        var vectorOutput = outputs.findByProcessingJob_Id(jobId).stream()
+                .filter(o -> "VECTORS".equals(o.getOutputType()))
+                .findFirst()
+                .orElseThrow(() -> new ResponseStatusException(
+                        HttpStatus.CONFLICT, "VECTORS_NOT_READY"));
+        if (vectorOutput.getCatalogName() == null || vectorOutput.getNamespaceName() == null
+                || vectorOutput.getObjectName() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "LANCE_TABLE_NOT_REGISTERED");
+        }
+        // TODO: enforce ownership/tenant ACL before allowing source access in production.
+        return vectors.search(sourceId, jobId,
+                vectorOutput.getCatalogName(), vectorOutput.getNamespaceName(),
+                vectorOutput.getObjectName(), request.query(),
                 request.topK() == null ? 5 : request.topK());
     }
 }
