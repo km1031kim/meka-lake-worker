@@ -43,7 +43,15 @@ public final class ApiModels {
 
     public record SourceResponse(Long sourceId, String name, String sourceType,
                                  String accessMode, String status, Capabilities capabilities,
-                                 FilesetRef fileset) {}
+                                 FilesetRef fileset,
+                                 String originalGvfsUri) {
+        // Keep existing seven-argument call sites compatible.
+        public SourceResponse(Long sourceId, String name, String sourceType,
+                              String accessMode, String status, Capabilities capabilities,
+                              FilesetRef fileset) {
+            this(sourceId, name, sourceType, accessMode, status, capabilities, fileset, null);
+        }
+    }
 
     public record EmbeddingOptions(Boolean enabled) {
         public boolean isEnabled() { return Boolean.TRUE.equals(enabled); }

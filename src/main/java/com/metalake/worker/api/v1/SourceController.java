@@ -53,6 +53,6 @@ public class SourceController {
         return new SourceResponse(source.getId(), source.getName(), source.getSourceType().name(),
                 source.getAccessMode().name(), source.getStatus().name(),
                 new Capabilities((isFileset || isGit) && active, isFileset && active && fileset != null,
-                        source.getSourceType() == SourceType.DATABASE && active), fileset);
+                        source.getSourceType() == SourceType.DATABASE && active), fileset, GvfsSourceUri.from(fileset));
     }
 }
