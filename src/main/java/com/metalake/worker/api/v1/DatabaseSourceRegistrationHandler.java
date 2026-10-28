@@ -17,6 +17,7 @@ import static com.metalake.worker.api.v1.ApiModels.*;
 @Component
 @RequiredArgsConstructor
 public class DatabaseSourceRegistrationHandler implements SourceRegistrationHandler {
+
     private final GravitinoDatabaseCatalogClient catalogs;
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
@@ -32,11 +33,15 @@ public class DatabaseSourceRegistrationHandler implements SourceRegistrationHand
     }
 
     @Override public SourceResponse register(RegisterSourceRequest request) {
+
         if (request.connection() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Database connection is required");
         }
+
         var c = request.connection();
+
         DatabaseCatalogSpec spec;
+
         try {
             int port = c.port() == null
                     ? ("MYSQL".equalsIgnoreCase(c.provider()) ? 3306 : 5432) : c.port();

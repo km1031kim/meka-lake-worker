@@ -48,6 +48,7 @@ public final class ApiModels {
     }
 
     public record FilesetRef(String metalake, String catalog, String schema, String name) {}
+
     public record DatabaseRef(String metalake, String catalog) {}
 
     public record Capabilities(boolean normalizable, boolean fileBrowsable, boolean catalogBrowsable) {}
@@ -56,6 +57,7 @@ public final class ApiModels {
                                  String accessMode, String status, Capabilities capabilities,
                                  FilesetRef fileset,
                                  String originalGvfsUri, DatabaseRef database) {
+
         // Compatibility for existing 8-field SourceResponse constructor callers.
         public SourceResponse(Long sourceId, String name, String sourceType,
                               String accessMode, String status, Capabilities capabilities,
@@ -63,6 +65,7 @@ public final class ApiModels {
             this(sourceId, name, sourceType, accessMode, status, capabilities,
                     fileset, originalGvfsUri, null);
         }
+
         // Keep existing seven-argument call sites compatible.
         public SourceResponse(Long sourceId, String name, String sourceType,
                               String accessMode, String status, Capabilities capabilities,

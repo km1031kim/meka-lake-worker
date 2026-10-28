@@ -26,6 +26,7 @@ public class SourceFileReadService {
     private final OpenDalS3Factory openDalS3Factory;
 
     public List<String> listPdfFiles(Long sourceId) {
+
         try (Operator operator = createOperator(sourceId)) {
 
             return operator.list("/").stream()

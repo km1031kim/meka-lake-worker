@@ -17,6 +17,7 @@ import static com.metalake.worker.api.v1.ApiModels.*;
 @RestController
 @RequestMapping("/api/sources")
 public class SourceController {
+
     private final List<SourceRegistrationHandler> handlers;
     private final SourceResourceRepository sourceRepository;
 
@@ -35,7 +36,8 @@ public class SourceController {
                         new ResponseStatusException(HttpStatus.NOT_IMPLEMENTED,
                                 "Source registration is not available for this type"));
 
-        return ResponseEntity.status(HttpStatus.CREATED).body(handler.register(request));
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(handler.register(request));
     }
 
     @GetMapping("/{sourceId}")
@@ -65,11 +67,11 @@ public class SourceController {
                         (isFileset || isGit) && active,
                         isFileset && active && fileset != null,
                         source.getSourceType() == SourceType.DATABASE && active),
-                fileset, GvfsSourceUri.from(fileset),
-
+                fileset,
+                GvfsSourceUri.from(fileset),
                 source.getSourceType() == SourceType.DATABASE && source.getGravitinoCatalog() != null
                         ? new DatabaseRef(source.getGravitinoMetalake(), source.getGravitinoCatalog())
-                        : null);
+                        : null
+        );
     }
-
 }

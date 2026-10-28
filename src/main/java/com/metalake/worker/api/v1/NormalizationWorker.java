@@ -40,14 +40,18 @@ public class NormalizationWorker {
     public void run(Long jobId, List<String> requestedPaths, boolean embed) {
         try {
             Long sourceId = state.start(jobId);
+
             // Ensures existing Iceberg tables are evolved before job-scoped writes.
             tableService.createTableIfAbsent();
+
             List<String> paths = requestedPaths == null || requestedPaths.isEmpty()
                     ? fileReader.listPdfFiles(sourceId)
                     : requestedPaths;
+
             if (paths.isEmpty()) {
                 throw new IllegalStateException("No PDF files to process");
             }
+
             long success = 0;
             List<CanonicalDocument> documentsToEmbed = new ArrayList<>();
             List<String> failures = new ArrayList<>();

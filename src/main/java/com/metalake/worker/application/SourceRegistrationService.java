@@ -40,6 +40,7 @@ public class SourceRegistrationService {
         String filesetName = "fileset_" + sourceId;
 
         try {
+
             // 2. Catalog 생성 (인증 정보 관리)
             gravitinoClient.createFilesetCatalog(
                     catalogName,

@@ -32,21 +32,26 @@ public class DatabaseMetadataController {
     }
 
     private SourceResource resolve(Long sourceId) {
+
         SourceResource source = sources.findById(sourceId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Source not found"));
+
         if (source.getSourceType() != SourceType.DATABASE || source.getStatus() != SourceStatus.ACTIVE
                 || source.getGravitinoCatalog() == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Source is not an active DATABASE source");
         }
+
         // Apply the same current-user/tenant ownership checks as SourceController before exposing metadata.
         return source;
     }
 
     private Map<String, Object> result(Long sourceId, String catalog, Map<String, Object> raw) {
         Map<String, Object> out = new LinkedHashMap<>();
+
         out.put("sourceId", sourceId);
         out.put("catalog", catalog);
         out.putAll(raw); // Gravitino's native response ('schemas', 'tables', 'table', ...).
+
         return out;
     }
 
@@ -69,6 +74,7 @@ public class DatabaseMetadataController {
         checkIdentifier(schema);
         checkIdentifier(table);
         var s = resolve(sourceId);
+
         return result(sourceId, s.getGravitinoCatalog(), catalogs.table(s.getGravitinoCatalog(), schema, table));
     }
 }

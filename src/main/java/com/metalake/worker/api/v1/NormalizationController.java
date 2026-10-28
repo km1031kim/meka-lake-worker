@@ -30,10 +30,12 @@ import static com.metalake.worker.api.v1.ApiModels.*;
 @RestController
 @RequiredArgsConstructor
 public class NormalizationController {
+
     private static final Logger log = LoggerFactory.getLogger(NormalizationController.class);
     private final NormalizationJobStateService states;
     private final NormalizationWorker worker;
     private final GitNormalizationWorker gitWorker;
+
     @Qualifier("normalizationExecutor")
     private final ThreadPoolTaskExecutor executor;
     private final ProcessingJobRepository jobs;
@@ -44,42 +46,56 @@ public class NormalizationController {
     @PostMapping("/api/sources/{sourceId}/normalizations")
     public ResponseEntity<JobAccepted> normalize(@PathVariable Long sourceId,
                 @Valid @RequestBody(required = false) NormalizeRequest request) {
+
         List<String> paths = request == null || request.relativePaths() == null
                 ? List.of() : List.copyOf(request.relativePaths());
+
         if (paths.size() != new LinkedHashSet<>(paths).size()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Duplicate relativePaths");
         }
+
         for (String path : paths) {
             if (path == null || path.isBlank() || path.startsWith("/") || path.contains("\\")
                     || !path.toLowerCase(java.util.Locale.ROOT).endsWith(".pdf")) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid PDF path");
             }
+
             for (String segment : path.split("/", -1)) {
                 if (segment.isEmpty() || segment.equals(".") || segment.equals("..")) {
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Invalid PDF path");
                 }
             }
         }
+
         boolean embed = request != null && request.embedding() != null
                 && request.embedding().isEnabled();
+
         SourceResource source = sources.findById(sourceId).orElseThrow(() ->
                 new ResponseStatusException(HttpStatus.NOT_FOUND, "Source not found"));
+
         boolean isGit = source.getSourceType() == com.metalake.worker.domain.source.entity.SourceType.GIT;
+
         if (isGit && (!paths.isEmpty() || embed)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Git jobs use the registered branch and do not embed code in this POC");
         }
+
         Long jobId = states.create(sourceId);
+
         try {
             executor.execute(() -> {
-                if (isGit) gitWorker.run(jobId);
-                else worker.run(jobId, paths, embed);
-            });
+                        if (isGit) gitWorker.run(jobId);
+
+                        else worker.run(jobId, paths, embed);
+                    }
+            );
         } catch (RejectedExecutionException e) {
             states.reject(jobId);
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Normalization queue is full");
         }
+
         String statusUrl = "/api/normalizations/" + jobId;
+
         return ResponseEntity.accepted().body(new JobAccepted(sourceId, jobId, "PENDING", statusUrl));
     }
 

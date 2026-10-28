@@ -17,6 +17,7 @@ import static com.metalake.worker.api.v1.ApiModels.*;
 @Component
 @RequiredArgsConstructor
 public class GitSourceRegistrationHandler implements SourceRegistrationHandler {
+
     private final JdbcTemplate jdbc;
     private final ObjectMapper json;
     private final SourceResourceRepository sources;
@@ -29,19 +30,28 @@ public class GitSourceRegistrationHandler implements SourceRegistrationHandler {
     @Override
     @Transactional
     public SourceResponse register(RegisterSourceRequest request) {
+
         Connection c = request.connection();
+
         if (c.repositoryUrl() == null || c.repositoryUrl().isBlank() ||
             c.ref() == null || c.ref().isBlank()) {
+
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Git repositoryUrl and ref(branch) are required");
         }
+
         var branches = git.branches(c.repositoryUrl(), c.credentialRef()).branches();
+
         if (branches == null || !branches.contains(c.ref())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Git branch does not exist");
         }
+
         // SourceResource already exists in the working repo. Persist only connection metadata,
         // never the access token; the private Git worker resolves credentialRef.
-        String config = json.writeValueAsString(Map.of(
-            "repositoryUrl", c.repositoryUrl(), "branch", c.ref()));
+        String config = json.writeValueAsString(
+                Map.of("repositoryUrl", c.repositoryUrl(),
+                        "branch", c.ref())
+        );
+
         Long id = jdbc.queryForObject("""
     INSERT INTO public.source_resource
         (name, source_type, access_mode,
@@ -55,6 +65,7 @@ public class GitSourceRegistrationHandler implements SourceRegistrationHandler {
                 config,
                 c.credentialRef()
         );
+
         return SourceController.toResponse(sources.findById(id).orElseThrow());
     }
 }
