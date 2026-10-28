@@ -45,3 +45,7 @@ metalake:
       region: us-east-1
   docling:
     base-url: http://10.194.1.140:5001
+
+  vector:
+    service-url: http://10.194.1.140:8108
+    service-token: chrldkagh3#
