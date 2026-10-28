@@ -69,7 +69,15 @@ public final class ApiModels {
 
     public record OutputInfo(String kind, String format, String catalog, String namespace,
                              String table, Long processingJobId, Long recordCount,
-                             Object snapshotId, String datasetUri) {}
+                             Object snapshotId, String datasetUri, String tableLocation) {
+        // Retain the original 9-argument constructor for older callers.
+        public OutputInfo(String kind, String format, String catalog, String namespace,
+                          String table, Long processingJobId, Long recordCount,
+                          Object snapshotId, String datasetUri) {
+            this(kind, format, catalog, namespace, table, processingJobId,
+                 recordCount, snapshotId, datasetUri, null);
+        }
+    }
 
     public record JobResponse(Long sourceId, Long jobId, String status, String error,
                               List<OutputInfo> outputs) {}

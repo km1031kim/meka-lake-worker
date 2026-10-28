@@ -4,6 +4,11 @@ import com.metalake.worker.api.v1.persistence.ApiNormalizedOutputRepository;
 import com.metalake.worker.domain.job.entity.ProcessingJob;
 import com.metalake.worker.domain.job.repository.ProcessingJobRepository;
 import com.metalake.worker.domain.output.entity.NormalizedOutput;
+import org.apache.iceberg.catalog.Catalog;
+import org.apache.iceberg.catalog.Namespace;
+import org.apache.iceberg.catalog.TableIdentifier;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import com.metalake.worker.domain.source.entity.SourceResource;
 import com.metalake.worker.domain.source.repository.SourceResourceRepository;
 import jakarta.validation.Valid;
@@ -25,6 +30,7 @@ import static com.metalake.worker.api.v1.ApiModels.*;
 @RestController
 @RequiredArgsConstructor
 public class NormalizationController {
+    private static final Logger log = LoggerFactory.getLogger(NormalizationController.class);
     private final NormalizationJobStateService states;
     private final NormalizationWorker worker;
     private final GitNormalizationWorker gitWorker;
@@ -33,6 +39,7 @@ public class NormalizationController {
     private final ProcessingJobRepository jobs;
     private final SourceResourceRepository sources;
     private final ApiNormalizedOutputRepository outputs;
+    private final Catalog icebergCatalog;
 
     @PostMapping("/api/sources/{sourceId}/normalizations")
     public ResponseEntity<JobAccepted> normalize(@PathVariable Long sourceId,
@@ -104,7 +111,37 @@ public class NormalizationController {
                 .map(output -> new OutputInfo(output.getOutputType(), output.getStorageType().name(),
                         output.getCatalogName(), output.getNamespaceName(), output.getObjectName(),
                         jobId, output.getRowCount(), output.getProperties().get("snapshotId"),
-                        (String) output.getProperties().get("datasetUri")))
+                        (String) output.getProperties().get("datasetUri"), tableLocation(output)))
                 .toList();
+    }
+
+    /** A table root location, not a job-specific object URI. Never contains S3 keys. */
+    private String tableLocation(NormalizedOutput output) {
+        String format = output.getStorageType().name();
+        if ("LANCE".equals(format)) {
+            Object uri = output.getProperties().get("datasetUri");
+            return uri instanceof String ? (String) uri : null;
+        }
+        if (!"ICEBERG".equals(format)
+                || output.getNamespaceName() == null || output.getObjectName() == null) {
+            return null;
+        }
+        // Only use this instance for outputs belonging to its configured IRC catalog.
+        if (output.getCatalogName() != null
+                && !output.getCatalogName().equals(icebergCatalog.name())) {
+            return null;
+        }
+        try {
+            TableIdentifier id = TableIdentifier.of(
+                    Namespace.of(output.getNamespaceName().split("\\.")),
+                    output.getObjectName());
+            return icebergCatalog.loadTable(id).location();
+        } catch (RuntimeException ex) {
+            // A temporary IRC outage must not break the job status/manifest endpoint.
+            log.warn("Iceberg tableLocation unavailable for {}.{} ({})",
+                    output.getNamespaceName(), output.getObjectName(),
+                    ex.getClass().getSimpleName());
+            return null;
+        }
     }
 }
