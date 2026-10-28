@@ -27,6 +27,7 @@ import static com.metalake.worker.api.v1.ApiModels.*;
 public class NormalizationController {
     private final NormalizationJobStateService states;
     private final NormalizationWorker worker;
+    private final GitNormalizationWorker gitWorker;
     @Qualifier("normalizationExecutor")
     private final ThreadPoolTaskExecutor executor;
     private final ProcessingJobRepository jobs;
@@ -54,9 +55,19 @@ public class NormalizationController {
         }
         boolean embed = request != null && request.embedding() != null
                 && request.embedding().isEnabled();
+        SourceResource source = sources.findById(sourceId).orElseThrow(() ->
+                new ResponseStatusException(HttpStatus.NOT_FOUND, "Source not found"));
+        boolean isGit = source.getSourceType() == com.metalake.worker.domain.source.entity.SourceType.GIT;
+        if (isGit && (!paths.isEmpty() || embed)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    "Git jobs use the registered branch and do not embed code in this POC");
+        }
         Long jobId = states.create(sourceId);
         try {
-            executor.execute(() -> worker.run(jobId, paths, embed));
+            executor.execute(() -> {
+                if (isGit) gitWorker.run(jobId);
+                else worker.run(jobId, paths, embed);
+            });
         } catch (RejectedExecutionException e) {
             states.reject(jobId);
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Normalization queue is full");

@@ -1,0 +1,760 @@
+{
+  "info": {
+    "name": "Meta Lake v2 + Git — PDF / BGE-M3 / Lance / Git Mirror / Iceberg",
+    "description": "Vector v2 Java overlay + Linux BGE-M3/Lance server (10.194.1.140:8108). 기존 Source/PDF 정규화 요청을 그대로 유지했습니다. 추가된 09 폴더에서 /health, /embedding/model-info, /embedding/v1/embeddings를 테스트합니다. Postman 컬렉션 변수 embeddingApiKey는 Linux .env의 EMBEDDING_API_KEY 또는, 별도 설정이 없다면 METALAKE_VECTOR_SERVICE_TOKEN과 동일하게 입력하세요. Java /api/sources/... 요청은 baseUrl(기본 localhost:8080)로 보냅니다. Python Vector 내부 API는 vectorUrl로 보냅니다. 임베딩 완료 후 Spring 앱에서도 metalake.vector.service-url 및 service-token을 설정해야 통합 테스트가 가능합니다.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "01 Register MinIO source",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/sources",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "sources"
+          ]
+        },
+        "description": "Meta Lake API v1 - 01 Register MinIO source",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"name\": \"pdf-test-source\",\n  \"sourceType\": \"S3\",\n  \"connection\": {\n    \"provider\": \"MINIO\",\n    \"endpoint\": \"{{minioEndpoint}}\",\n    \"bucket\": \"{{bucket}}\",\n    \"prefix\": \"{{prefix}}\",\n    \"accessKey\": \"{{accessKey}}\",\n    \"secretKey\": \"{{secretKey}}\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Created (201)\", () => pm.response.to.have.status(201));",
+              "if (pm.response.code === 201) {",
+              "  const json = pm.response.json();",
+              "  pm.collectionVariables.set(\"sourceId\", String(json.sourceId));",
+              "  pm.test(\"Source ID returned\", () => pm.expect(json.sourceId).to.exist);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Get source",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/sources/{{sourceId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "sources",
+            "{{sourceId}}"
+          ]
+        },
+        "description": "Meta Lake API v1 - 02 Get source"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Source exists (200)\", () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Start PDF normalization (root PDF only)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/sources/{{sourceId}}/normalizations",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "sources",
+            "{{sourceId}}",
+            "normalizations"
+          ]
+        },
+        "description": "Meta Lake API v1 - 03 Start PDF normalization (root PDF only)",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"relativePaths\": []\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Accepted (202)\", () => pm.response.to.have.status(202));",
+              "if (pm.response.code === 202) {",
+              "  const json = pm.response.json();",
+              "  pm.collectionVariables.set(\"jobId\", String(json.jobId));",
+              "  pm.test(\"Job ID returned\", () => pm.expect(json.jobId).to.exist);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Check normalization job",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/normalizations/{{jobId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "normalizations",
+            "{{jobId}}"
+          ]
+        },
+        "description": "Meta Lake API v1 - 04 Check normalization job"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Job returned (200)\", () => pm.response.to.have.status(200));",
+              "if (pm.response.code === 200) { console.log(\"Job status:\", pm.response.json().status); }"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Read published results",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/sources/{{sourceId}}/normalized-results",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "sources",
+            "{{sourceId}}",
+            "normalized-results"
+          ]
+        },
+        "description": "Meta Lake API v1 - 05 Read published results"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Published results response (200)\", () => pm.response.to.have.status(200));",
+              "if (pm.response.code === 200) { console.log(\"Publication status:\", pm.response.json().status); }"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 Start specific PDF normalization (edit path)",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/sources/{{sourceId}}/normalizations",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "sources",
+            "{{sourceId}}",
+            "normalizations"
+          ]
+        },
+        "description": "Meta Lake API v1 - 06 Start specific PDF normalization (edit path)",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"relativePaths\": [\n    \"example.pdf\"\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Accepted (202)\", () => pm.response.to.have.status(202));",
+              "if (pm.response.code === 202) { pm.collectionVariables.set(\"jobId\", String(pm.response.json().jobId)); }"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 Normalize PDF + BGE-M3 vectors",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/sources/{{sourceId}}/normalizations",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"relativePaths\": [\n    \"{{pdfRelativePath}}\"\n  ],\n  \"embedding\": {\n    \"enabled\": true\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Java /api/sources/{sourceId}/normalizations. 성공 응답의 jobId를 컬렉션 변수에 보관합니다. 이 요청은 비동기이므로 완료 후 04 Job과 05 Published results를 조회하세요."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Normalization accepted (202)\", function () { pm.response.to.have.status(202); });",
+              "if (pm.response.code === 202) {",
+              "  const result = pm.response.json();",
+              "  pm.test(\"jobId returned\", function () { pm.expect(result.jobId).to.exist; });",
+              "  if (result.jobId !== undefined && result.jobId !== null) pm.collectionVariables.set(\"jobId\", String(result.jobId));",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 Vector similarity search",
+      "request": {
+        "method": "POST",
+        "url": "{{baseUrl}}/api/sources/{{sourceId}}/vector-search",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"query\": \"{{vectorQuery}}\",\n  \"topK\": 3\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        },
+        "description": "Java Backend Vector Search API. sourceId의 current_published_job_id를 사용합니다. DOCUMENTS+VECTORS가 발행된 이후 실행하세요. 응답 hits와 각 hit의 content/distance를 확인합니다."
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test(\"Search succeeded (200)\", function () { pm.response.to.have.status(200); });",
+              "if (pm.response.code === 200) {",
+              "  const result = pm.response.json();",
+              "  pm.test(\"hits array returned\", function () { pm.expect(result.hits).to.be.an(\"array\"); });",
+              "  if (Array.isArray(result.hits)) console.log(\"Lance matches:\", result.hits.length, \"jobId:\", result.jobId);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 BGE-M3 Embedding API — Linux Vector Server",
+      "description": "배포 서버 10.194.1.140:8108로 직접 요청하는 API입니다. 03/04 요청 전에 collection variable embeddingApiKey를 설정하세요.",
+      "item": [
+        {
+          "name": "01 Vector Server Health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{vectorUrl}}/health",
+            "description": "FastAPI liveness. 모델 실제 추론 성공 여부는 03 임베딩 요청으로 확인하세요."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Vector service up\", () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) pm.test(\"UP\", () => pm.expect(pm.response.json().status).to.eql(\"UP\"));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02 Gravitino BGE-M3 Model Info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{vectorUrl}}/embedding/model-info",
+            "description": "Gravitino ax.model.embedding.bge_m3의 production 버전과 minio_bge_m3 URI 검증. 로그인 토큰 없이 조회되는 현재 Linux 서버 기준."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Model metadata returned\", () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const info = pm.response.json();",
+                  "  pm.test(\"Gravitino registered model\", () => {",
+                  "    pm.expect(info.model).to.equal(\"bge_m3\");",
+                  "    pm.expect(info.uriName).to.equal(\"minio_bge_m3\");",
+                  "    pm.expect(info.artifactUri).to.equal(\"s3a://data-platform/models/embedding/bge_m3/v1/\");",
+                  "  });",
+                  "  console.log(\"Gravitino model version:\", info.version);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03 BGE-M3 Embedding — 1 Text",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{embeddingApiKey}}",
+                "description": "Linux .env EMBEDDING_API_KEY, 또는 미설정 시 METALAKE_VECTOR_SERVICE_TOKEN"
+              }
+            ],
+            "url": "{{vectorUrl}}/embedding/v1/embeddings",
+            "description": "Linux FastAPI의 실제 BGE-M3 추론 요청. 1024차원 검사. Postman Console에 전체 벡터를 출력하지 않음.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"bge_m3\",\n  \"input\": \"{{vectorQuery}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Embedding succeeded (200)\", () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const body = pm.response.json();",
+                  "  pm.test(\"BGE-M3 1024-dim vector\", () => {",
+                  "    pm.expect(body.model).to.equal(\"bge_m3\");",
+                  "    pm.expect(body.data).to.be.an(\"array\").with.length(1);",
+                  "    pm.expect(body.data[0].embedding).to.be.an(\"array\").with.length(1024);",
+                  "    pm.expect(body.data[0].index).to.equal(0);",
+                  "  });",
+                  "  console.log(\"Embedding model version:\", body.modelVersion, \"dimension:\", body.data[0].embedding.length);",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04 BGE-M3 Embedding — Batch 2 Texts",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{embeddingApiKey}}",
+                "description": "Linux .env EMBEDDING_API_KEY, 또는 미설정 시 METALAKE_VECTOR_SERVICE_TOKEN"
+              }
+            ],
+            "url": "{{vectorUrl}}/embedding/v1/embeddings",
+            "description": "2건 배치 임베딩. 서버는 한 요청에서 최대 32개 입력을 허용합니다.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"bge_m3\",\n  \"input\": [\n    \"형상 관리 파일은 어디에 저장하나요?\",\n    \"PDF 문서의 정규화 결과를 Lance에서 검색합니다.\"\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Batch embedding succeeded (200)\", () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  "  const data = pm.response.json().data;",
+                  "  pm.test(\"Two 1024-dim vectors\", () => {",
+                  "    pm.expect(data).to.be.an(\"array\").with.length(2);",
+                  "    data.forEach((row, idx) => {",
+                  "      pm.expect(row.index).to.equal(idx);",
+                  "      pm.expect(row.embedding).to.be.an(\"array\").with.length(1024);",
+                  "    });",
+                  "  });",
+                  "}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "02 Git Branch / Mirror / Iceberg",
+      "item": [
+        {
+          "name": "00 Git worker health (Linux)",
+          "request": {
+            "method": "GET",
+            "url": "{{gitWorkerUrl}}/health"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Git worker available\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "01 List remote Git branches",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/git/branches",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"repositoryUrl\": \"{{gitUrl}}\",\n  \"credentialRef\": null\n}"
+            },
+            "description": "Configure GIT_ALLOWED_HOSTS at Python git_service first; public repo can omit credentialRef."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "pm.test(\"Branch found\",()=>pm.expect(body.branches).to.include(pm.collectionVariables.get(\"gitBranch\")));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "02 Register Git Source with selected branch",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/sources",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"meka-lake-worker-code\",\n  \"sourceType\": \"GIT\",\n  \"connection\": {\n    \"repositoryUrl\": \"{{gitUrl}}\",\n    \"ref\": \"{{gitBranch}}\"\n  }\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 201\", function () { pm.response.to.have.status(201); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"gitSourceId\",String(body.sourceId));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "03 Get Git source",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/sources/{{gitSourceId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "04 Clone + mirror + normalize Git branch",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/sources/{{gitSourceId}}/normalizations",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"relativePaths\": []\n}"
+            },
+            "description": "Creates job. Internal git_service will pin commit, mirror to MinIO, register MANAGED Fileset, parse Java and write CODE_* to Iceberg."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 202\", function () { pm.response.to.have.status(202); });",
+                  "const body = pm.response.json();",
+                  "pm.collectionVariables.set(\"gitJobId\",String(body.jobId));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "05 Git normalization job status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/normalizations/{{gitJobId}}"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\", function () { pm.response.to.have.status(200); });",
+                  "const body = pm.response.json();",
+                  "if(body.status === \"SUCCEEDED\") {pm.test(\"3 code outputs\",()=>pm.expect(body.outputs.map(o=>o.kind)).to.include.members([\"CODE_FILES\",\"CODE_SYMBOLS\",\"CODE_RELATIONS\"]));}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "06 Published Git outputs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/sources/{{gitSourceId}}/normalized-results"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"HTTP 200\",()=>pm.response.to.have.status(200));",
+                  "const r=pm.response.json();",
+                  "if(r.status === \"AVAILABLE\"){pm.test(\"Three code outputs\",()=>pm.expect(r.outputs.map(o=>o.kind).sort()).to.eql([\"CODE_FILES\",\"CODE_RELATIONS\",\"CODE_SYMBOLS\"]));}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "07 Gravitino mirrored Git fileset",
+          "request": {
+            "method": "GET",
+            "url": "{{gravitinoUrl}}/api/metalakes/ax/catalogs/git_managed/schemas/mirrors/filesets/git_source_{{gitSourceId}}_job_{{gitJobId}}",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/vnd.gravitino.v1+json"
+              }
+            ]
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Git mirror Fileset registered\",()=>pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "minioEndpoint",
+      "value": "http://10.194.1.7:9000"
+    },
+    {
+      "key": "bucket",
+      "value": "data-platform"
+    },
+    {
+      "key": "prefix",
+      "value": "source/"
+    },
+    {
+      "key": "accessKey",
+      "value": ""
+    },
+    {
+      "key": "secretKey",
+      "value": "",
+      "type": "secret"
+    },
+    {
+      "key": "sourceId",
+      "value": ""
+    },
+    {
+      "key": "jobId",
+      "value": ""
+    },
+    {
+      "key": "vectorUrl",
+      "value": "http://10.194.1.140:8108"
+    },
+    {
+      "key": "embeddingApiKey",
+      "value": "",
+      "type": "secret"
+    },
+    {
+      "key": "pdfRelativePath",
+      "value": "TeraStream_형상관리가이드.pdf"
+    },
+    {
+      "key": "vectorQuery",
+      "value": "형상 관리 파일 저장 경로 설정 방법"
+    },
+    {
+      "key": "gitUrl",
+      "value": "https://github.com/km1031kim/meka-lake-worker.git"
+    },
+    {
+      "key": "gitBranch",
+      "value": "main"
+    },
+    {
+      "key": "gitCredentialRef",
+      "value": ""
+    },
+    {
+      "key": "gitSourceId",
+      "value": ""
+    },
+    {
+      "key": "gitJobId",
+      "value": ""
+    },
+    {
+      "key": "gitWorkerUrl",
+      "value": "http://10.194.1.140:8110",
+      "type": "string"
+    },
+    {
+      "key": "gravitinoUrl",
+      "value": "http://10.194.1.140:8090",
+      "type": "string"
+    }
+  ]
+}

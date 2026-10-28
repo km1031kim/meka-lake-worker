@@ -49,3 +49,7 @@ metalake:
   vector:
     service-url: http://10.194.1.140:8108
     service-token: chrldkagh3#
+
+  git:
+    service-url: http://10.194.1.140:8110
+    service-token: chrldkagh3#

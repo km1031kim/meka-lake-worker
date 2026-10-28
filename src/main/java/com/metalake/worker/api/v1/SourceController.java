@@ -45,13 +45,14 @@ public class SourceController {
 
     static SourceResponse toResponse(SourceResource source) {
         boolean isFileset = source.getSourceType() == SourceType.FILESET;
+        boolean isGit = source.getSourceType() == SourceType.GIT;
         boolean active = source.getStatus() == SourceStatus.ACTIVE;
         FilesetRef fileset = source.getGravitinoFileset() == null ? null
                 : new FilesetRef(source.getGravitinoMetalake(), source.getGravitinoCatalog(),
                         source.getGravitinoSchema(), source.getGravitinoFileset());
         return new SourceResponse(source.getId(), source.getName(), source.getSourceType().name(),
                 source.getAccessMode().name(), source.getStatus().name(),
-                new Capabilities(isFileset && active, isFileset && active && fileset != null,
+                new Capabilities((isFileset || isGit) && active, isFileset && active && fileset != null,
                         source.getSourceType() == SourceType.DATABASE && active), fileset);
     }
 }

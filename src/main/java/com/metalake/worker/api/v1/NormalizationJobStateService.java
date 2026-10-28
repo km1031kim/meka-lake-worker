@@ -13,6 +13,8 @@ import com.metalake.worker.domain.source.entity.SourceStatus;
 import com.metalake.worker.domain.source.entity.SourceType;
 import com.metalake.worker.domain.source.repository.SourceResourceRepository;
 import jakarta.persistence.EntityManager;
+import org.springframework.jdbc.core.JdbcTemplate;
+import java.util.HashMap;
 import jakarta.persistence.LockModeType;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -30,6 +32,7 @@ public class NormalizationJobStateService {
     private final ApiFileProcessingRepository files;
     private final ApiNormalizedOutputRepository outputs;
     private final EntityManager entityManager;
+    private final JdbcTemplate jdbc;
 
     @Transactional
     public Long create(Long sourceId) {
@@ -38,10 +41,11 @@ public class NormalizationJobStateService {
         if (source.getStatus() != SourceStatus.ACTIVE) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Source is not active");
         }
-        if (source.getSourceType() != SourceType.FILESET) {
+        if (source.getSourceType() != SourceType.FILESET && source.getSourceType() != SourceType.GIT) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "SOURCE_NOT_NORMALIZABLE");
         }
-        return jobs.saveAndFlush(new ProcessingJob(source, "NORMALIZE", null, null)).getId();
+        return jobs.saveAndFlush(new ProcessingJob(source, source.getSourceType() == SourceType.GIT
+                ? "INGEST_AND_NORMALIZE" : "NORMALIZE", null, null)).getId();
     }
 
     @Transactional
@@ -57,6 +61,64 @@ public class NormalizationJobStateService {
         FileProcessing file = new FileProcessing(job, path, null, null, "docling");
         file.start();
         return files.saveAndFlush(file).getId();
+    }
+
+    @Transactional
+    public Long startGitFile(Long jobId, String path, String revision) {
+        ProcessingJob job = findJob(jobId);
+        FileProcessing file = new FileProcessing(job, path, revision, null, "git-tree-sitter");
+        file.start();
+        return files.saveAndFlush(file).getId();
+    }
+
+    /** All Iceberg code writes are committed before this publication transaction. */
+    @Transactional
+    public void publishGit(Long jobId, GitBridgeClient.GitJobResult result) {
+        ProcessingJob job = findJob(jobId);
+        if (job.getStatus() != JobStatus.RUNNING || result.outputs() == null ||
+                result.outputs().size() != 3 || result.processedFiles() <= 0 ||
+                result.sourceRevision() == null || !result.sourceRevision().matches("[a-f0-9]{40}")) {
+            throw new IllegalStateException("Incomplete Git normalization output");
+        }
+        var kinds = result.outputs().stream().map(GitBridgeClient.GitOutput::kind).collect(java.util.stream.Collectors.toSet());
+        if (!kinds.equals(java.util.Set.of("CODE_FILES", "CODE_SYMBOLS", "CODE_RELATIONS"))) {
+            throw new IllegalStateException("Unexpected Git output kinds");
+        }
+        Long sourceId = job.getSourceResource().getId();
+        SourceResource source = entityManager.find(SourceResource.class, sourceId, LockModeType.PESSIMISTIC_WRITE);
+        if (source == null || source.getSourceType() != SourceType.GIT) {
+            throw new IllegalStateException("Source not found or not Git");
+        }
+        for (var descriptor : result.outputs()) {
+            NormalizedOutput output = new NormalizedOutput(job, descriptor.kind(), StorageType.ICEBERG, descriptor.tableLocation());
+            output.assignCatalog(null, descriptor.catalog(), descriptor.namespace(), descriptor.table());
+            var metadata = new HashMap<String, Object>();
+            if (descriptor.snapshotId() != null) metadata.put("snapshotId", descriptor.snapshotId());
+            metadata.put("sourceRevision", result.sourceRevision());
+            metadata.put("mirrorUri", result.mirrorUri());
+            if (result.fileset() != null) {
+                metadata.put("mirrorFileset", result.fileset().catalog() + "." + result.fileset().schema() + "." + result.fileset().name());
+            }
+            output.recordResult(descriptor.recordCount(), metadata);
+            outputs.save(output);
+        }
+        job.succeed();
+        entityManager.flush();
+        // Job source revision remains stable even when the configured branch later moves.
+        jdbc.update("UPDATE public.processing_job SET source_revision = ? WHERE id = ?", result.sourceRevision(), jobId);
+        Long prior = source.getCurrentPublishedJobId();
+        if (prior == null || !jobs.findById(prior).orElseThrow().getCreatedAt().isAfter(job.getCreatedAt())) {
+            source.publish(jobId);
+            entityManager.flush();
+            if (result.fileset() != null) {
+                jdbc.update("""
+                    UPDATE public.source_resource
+                    SET gravitino_metalake=?, gravitino_catalog=?, gravitino_schema=?, gravitino_fileset=?
+                    WHERE id=?
+                    """, result.fileset().metalake(), result.fileset().catalog(),
+                        result.fileset().schema(), result.fileset().name(), sourceId);
+            }
+        }
     }
 
     @Transactional
